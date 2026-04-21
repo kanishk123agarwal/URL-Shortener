@@ -4,6 +4,7 @@ bin/
 tests/test_shortener
 tests/test_database
 tests/test_repository
+tests/test_cache
 
 # Third-party dependencies
 include/

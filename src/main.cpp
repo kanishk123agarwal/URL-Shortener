@@ -1,6 +1,7 @@
 // src/main.cpp
 #include "crow/app.h"
 #include "sqlite_url_repository.h"
+#include "cache.h"
 #include <cstdlib>
 #include <string>
 #include <optional>
@@ -10,6 +11,7 @@ int main() {
     const char* base_url = std::getenv("BASE_URL") ? std::getenv("BASE_URL") : "http://localhost:8080";
 
     SQLiteURLRepository repo(db_path);
+    Cache cache;
 
     crow::SimpleApp app;
 
@@ -69,12 +71,21 @@ int main() {
 
     // ── GET /{code} (Redirect) ──
     CROW_ROUTE(app, "/<string>")
-    ([&repo](const crow::request& /*req*/, std::string code) {
+    ([&repo, &cache](const crow::request& /*req*/, std::string code) {
         // Ignore browser auto-requests
         if (code == "favicon.ico" || code == "robots.txt") {
             return crow::response(404);
         }
 
+        // 1. Check in-memory Cache first
+        auto cached = cache.get(code);
+        if (cached.has_value()) {
+            crow::response res(302);
+            res.add_header("Location", *cached);
+            return res;
+        }
+
+        // 2. Cache Miss - Query Database
         auto record = repo.getURLByCode(code);
         if (!record.has_value()) {
             return crow::response(404, "{\"error\":\"Short code not found\"}");
@@ -85,7 +96,10 @@ int main() {
             return crow::response(410, "{\"error\":\"This link has expired\"}");
         }
 
-        // Increment hit counter
+        // 3. Populate Cache for next request
+        cache.set(code, record->original_url);
+
+        // 4. Increment hit counter
         repo.incrementHits(record->id);
 
         // 302 = Temporary Redirect
@@ -108,6 +122,20 @@ int main() {
         res["hit_count"] = record->hit_count;
         res["created_at"] = static_cast<int64_t>(record->created_at);
         res["is_custom_alias"] = record->is_custom_alias;
+        return crow::response(200, res);
+    });
+
+    // ── GET /cache/stats ──
+    CROW_ROUTE(app, "/cache/stats")
+    ([&cache]() {
+        auto stats = cache.getStats();
+        int64_t total = stats.hits + stats.misses;
+        double hit_rate = total > 0 ? (100.0 * stats.hits / total) : 0.0;
+
+        crow::json::wvalue res;
+        res["hits"] = stats.hits;
+        res["misses"] = stats.misses;
+        res["hit_rate"] = hit_rate;
         return crow::response(200, res);
     });
 
