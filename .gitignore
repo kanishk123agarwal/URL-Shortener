@@ -1,0 +1,25 @@
+# Build outputs and binaries
+build/
+bin/
+tests/test_shortener
+tests/test_database
+tests/test_repository
+
+# Third-party dependencies
+include/
+
+# SQLite Database files
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Temporary directories
+temp_clone_*/
+
+# IDE and OS configuration files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.o
