@@ -2,6 +2,7 @@
 #include "crow/app.h"
 #include "sqlite_url_repository.h"
 #include "cache.h"
+#include "rate_limiter.h"
 #include <cstdlib>
 #include <string>
 #include <optional>
@@ -12,6 +13,7 @@ int main() {
 
     SQLiteURLRepository repo(db_path);
     Cache cache;
+    RateLimiter limiter;
 
     crow::SimpleApp app;
 
@@ -23,7 +25,13 @@ int main() {
 
     // ── POST /shorten ──
     CROW_ROUTE(app, "/shorten").methods("POST"_method)
-    ([&repo, base_url](const crow::request& req) {
+    ([&repo, &limiter, base_url](const crow::request& req) {
+        // Enforce rate limiting by IP
+        auto ip = req.remote_ip_address;
+        if (!limiter.allow(ip)) {
+            return crow::response(429, "{\"error\":\"Rate limit exceeded\"}");
+        }
+
         auto body = crow::json::load(req.body);
         if (!body) {
             return crow::response(400, "{\"error\":\"Invalid JSON payload\"}");
