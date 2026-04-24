@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_PATH=/data/urls.db
+      - BASE_URL=http://localhost:8080
+      - RATE_LIMIT_PER_MINUTE=10
+    volumes:
+      - url_data:/data   # persist the SQLite DB
+
+volumes:
+  url_data:

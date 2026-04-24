@@ -24,3 +24,8 @@ temp_clone_*/
 .DS_Store
 *.swp
 *.o
+
+# Environment variables files
+.env
+.env.local
+
