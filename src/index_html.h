@@ -525,7 +525,7 @@ const std::string INDEX_HTML = R"rawhtml(<!DOCTYPE html>
                 <form id="shorten-form" onsubmit="shortenURL(event)">
                     <div class="form-group">
                         <label for="long-url">Destination URL</label>
-                        <input type="url" id="long-url" class="input-field" placeholder="https://example.com/very-long-and-complex-url-path" required>
+                        <input type="text" id="long-url" class="input-field" placeholder="https://example.com/very-long-and-complex-url-path" required>
                     </div>
 
                     <div class="form-row">
@@ -661,7 +661,11 @@ const std::string INDEX_HTML = R"rawhtml(<!DOCTYPE html>
 
         async function shortenURL(e) {
             e.preventDefault();
-            const longUrl = document.getElementById('long-url').value;
+            let longUrl = document.getElementById('long-url').value.trim();
+            // Automatically prepend https:// if the user forgets to type it (e.g., "google.com")
+            if (!/^https?:\/\//i.test(longUrl)) {
+                longUrl = 'https://' + longUrl;
+            }
             const customAlias = document.getElementById('custom-alias').value.trim();
             const expiryDays = document.getElementById('expiry-days').value;
 

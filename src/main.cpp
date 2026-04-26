@@ -11,7 +11,10 @@
 
 int main() {
     const char* db_path = std::getenv("DB_PATH") ? std::getenv("DB_PATH") : "urls.db";
-    const char* base_url = std::getenv("BASE_URL") ? std::getenv("BASE_URL") : "http://localhost:8080";
+    std::string base_url_str = std::getenv("BASE_URL") ? std::getenv("BASE_URL") : "http://localhost:8080";
+    if (!base_url_str.empty() && base_url_str.back() == '/') {
+        base_url_str.pop_back();
+    }
 
     SQLiteURLRepository repo(db_path);
     Cache cache;
@@ -36,7 +39,7 @@ int main() {
 
     // ── POST /shorten ──
     CROW_ROUTE(app, "/shorten").methods("POST"_method)
-    ([&repo, &limiter, base_url](const crow::request& req) {
+    ([&repo, &limiter, base_url_str](const crow::request& req) {
         // Enforce rate limiting by IP
         auto ip = req.remote_ip_address;
         if (!limiter.allow(ip)) {
@@ -81,7 +84,7 @@ int main() {
         }
 
         crow::json::wvalue res;
-        res["short_url"] = std::string(base_url) + "/" + record->short_code;
+        res["short_url"] = base_url_str + "/" + record->short_code;
         res["short_code"] = record->short_code;
         res["original_url"] = record->original_url;
         res["created_at"] = static_cast<int64_t>(record->created_at);
