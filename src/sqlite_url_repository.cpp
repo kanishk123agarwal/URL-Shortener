@@ -217,3 +217,17 @@ URLRecord SQLiteURLRepository::rowToRecord(sqlite3_stmt* stmt) {
     r.hit_count = sqlite3_column_int64(stmt, 7);
     return r;
 }
+
+SQLiteURLRepository::GlobalStats SQLiteURLRepository::getGlobalStats() {
+    GlobalStats stats;
+    const char* sql = "SELECT COUNT(*), COALESCE(SUM(hit_count), 0) FROM urls;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            stats.total_urls = sqlite3_column_int64(stmt, 0);
+            stats.total_hits = sqlite3_column_int64(stmt, 1);
+        }
+        sqlite3_finalize(stmt);
+    }
+    return stats;
+}

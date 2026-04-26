@@ -26,6 +26,12 @@ public:
     std::optional<URLRecord> getURLByCode(const std::string& code) override;
     bool incrementHits(int64_t url_id) override;
 
+    struct GlobalStats {
+        int64_t total_urls = 0;
+        int64_t total_hits = 0;
+    };
+    GlobalStats getGlobalStats();
+
 private:
     sqlite3* db_;
     URLRecord rowToRecord(sqlite3_stmt* stmt);

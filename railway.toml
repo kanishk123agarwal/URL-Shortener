@@ -1,0 +1,7 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+startCommand = "./build/url_shortener"
+healthcheckPath = "/health"
+healthcheckTimeout = 30

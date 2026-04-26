@@ -3,9 +3,11 @@
 #include "sqlite_url_repository.h"
 #include "cache.h"
 #include "rate_limiter.h"
+#include "index_html.h"
 #include <cstdlib>
 #include <string>
 #include <optional>
+#include <iostream>
 
 int main() {
     const char* db_path = std::getenv("DB_PATH") ? std::getenv("DB_PATH") : "urls.db";
@@ -16,6 +18,15 @@ int main() {
     RateLimiter limiter;
 
     crow::SimpleApp app;
+
+    // ── GET / (Frontend) ──
+    CROW_ROUTE(app, "/")
+    ([]() {
+        crow::response res;
+        res.set_header("Content-Type", "text/html");
+        res.write(INDEX_HTML);
+        return res;
+    });
 
     // ── GET /health ──
     CROW_ROUTE(app, "/health")
@@ -77,17 +88,73 @@ int main() {
         return crow::response(200, res);
     });
 
-    // ── GET /{code} (Redirect) ──
+    // ── GET /stats (Combined DB + Cache stats) — MUST be before /<string> ──
+    CROW_ROUTE(app, "/stats")
+    ([&repo, &cache]() {
+        auto dbStats = repo.getGlobalStats();
+        auto cacheStats = cache.getStats();
+        int64_t total = cacheStats.hits + cacheStats.misses;
+        double hit_rate = total > 0 ? (100.0 * cacheStats.hits / total) : 0.0;
+
+        crow::json::wvalue res;
+        res["total_urls"]   = dbStats.total_urls;
+        res["total_hits"]   = dbStats.total_hits;
+        res["cache_hits"]   = cacheStats.hits;
+        res["cache_misses"] = cacheStats.misses;
+        res["hit_rate"]     = hit_rate;
+        return crow::response(200, res);
+    });
+
+    // ── GET /cache/stats — MUST be before /<string> ──
+    CROW_ROUTE(app, "/cache/stats")
+    ([&cache]() {
+        auto stats = cache.getStats();
+        int64_t total = stats.hits + stats.misses;
+        double hit_rate = total > 0 ? (100.0 * stats.hits / total) : 0.0;
+
+        crow::json::wvalue res;
+        res["hits"]     = stats.hits;
+        res["misses"]   = stats.misses;
+        res["hit_rate"] = hit_rate;
+        return crow::response(200, res);
+    });
+
+    // ── GET /analytics/{code} — MUST be before /<string> ──
+    CROW_ROUTE(app, "/analytics/<string>")
+    ([&repo](std::string code) {
+        auto record = repo.getURLByCode(code);
+        if (!record.has_value()) {
+            return crow::response(404, "{\"error\":\"Short code not found\"}");
+        }
+
+        crow::json::wvalue res;
+        res["short_code"]     = record->short_code;
+        res["original_url"]   = record->original_url;
+        res["hit_count"]      = record->hit_count;
+        res["created_at"]     = static_cast<int64_t>(record->created_at);
+        res["is_custom_alias"]= record->is_custom_alias;
+        return crow::response(200, res);
+    });
+
+    // ── GET /{code} (Redirect) — wildcard, MUST be last ──
     CROW_ROUTE(app, "/<string>")
     ([&repo, &cache](const crow::request& /*req*/, std::string code) {
-        // Ignore browser auto-requests
-        if (code == "favicon.ico" || code == "robots.txt") {
+        // Ignore browser auto-requests and guard known routes
+        if (code == "favicon.ico" || code == "robots.txt" ||
+            code == "stats"       || code == "health"     ||
+            code == "shorten"     || code == "analytics"  ||
+            code == "cache") {
             return crow::response(404);
         }
 
         // 1. Check in-memory Cache first
         auto cached = cache.get(code);
         if (cached.has_value()) {
+            // Increment hit counter even on a cache hit
+            auto record = repo.getURLByCode(code);
+            if (record.has_value()) {
+                repo.incrementHits(record->id);
+            }
             crow::response res(302);
             res.add_header("Location", *cached);
             return res;
@@ -115,38 +182,16 @@ int main() {
         res.add_header("Location", record->original_url);
         return res;
     });
+    std::cout << "\n============================================\n";
+    std::cout << "🚀 URL-shortener Service is Running!\n";
+    std::cout << "👉 Please open: http://localhost:8080\n";
+    std::cout << "⚠️  DO NOT use: http://0.0.0.0:8080 (browsers block API fetch requests to 0.0.0.0 for security).\n";
+    std::cout << "============================================\n\n";
 
-    // ── GET /analytics/{code} ──
-    CROW_ROUTE(app, "/analytics/<string>")
-    ([&repo](std::string code) {
-        auto record = repo.getURLByCode(code);
-        if (!record.has_value()) {
-            return crow::response(404, "{\"error\":\"Short code not found\"}");
-        }
+    // Read PORT from env (Railway injects $PORT; fallback to 8080 locally)
+    const char* port_env = std::getenv("PORT");
+    int port = port_env ? std::stoi(std::string(port_env)) : 8080;
 
-        crow::json::wvalue res;
-        res["short_code"] = record->short_code;
-        res["original_url"] = record->original_url;
-        res["hit_count"] = record->hit_count;
-        res["created_at"] = static_cast<int64_t>(record->created_at);
-        res["is_custom_alias"] = record->is_custom_alias;
-        return crow::response(200, res);
-    });
-
-    // ── GET /cache/stats ──
-    CROW_ROUTE(app, "/cache/stats")
-    ([&cache]() {
-        auto stats = cache.getStats();
-        int64_t total = stats.hits + stats.misses;
-        double hit_rate = total > 0 ? (100.0 * stats.hits / total) : 0.0;
-
-        crow::json::wvalue res;
-        res["hits"] = stats.hits;
-        res["misses"] = stats.misses;
-        res["hit_rate"] = hit_rate;
-        return crow::response(200, res);
-    });
-
-    app.port(8080).multithreaded().run();
+    app.port(port).multithreaded().run();
     return 0;
 }
