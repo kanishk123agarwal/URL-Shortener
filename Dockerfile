@@ -1,7 +1,7 @@
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y \
-    g++ cmake libsqlite3-dev git \
+    g++ cmake libsqlite3-dev libasio-dev git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
