@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+RUN mkdir -p /data
+
 # The workspace already includes 'include/crow' and 'include/asio'.
 # We can also clone Crow to ensure headers are available as per the guide.
 RUN git clone https://github.com/CrowCpp/Crow.git /tmp/crow && \
